@@ -161,8 +161,11 @@ def apply_legs(cur, legs):
     return cur
 
 
-def trade(dry=False):
+def trade(dry=False, refresh=True):
     c = creds()
+    if refresh:  # decisions must see yesterday's close, not the last collected bar
+        import napkin_tape as nt
+        nt.bulk()
     decisions = decide()
     day_dir = os.path.join(OUT, "live")
     os.makedirs(day_dir, exist_ok=True)
@@ -405,7 +408,7 @@ def selfcheck():
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "selfcheck"
     if cmd == "trade":
-        trade(dry="--dry" in sys.argv)
+        trade(dry="--dry" in sys.argv, refresh="--no-refresh" not in sys.argv)
     elif cmd == "decide":
         print(json.dumps(decide(), indent=1))
     else:
