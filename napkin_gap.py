@@ -244,6 +244,11 @@ def gap():
             continue
         fills = api(f"/me/agents/{aid}/fills?limit=100", key)
         time.sleep(PAUSE)
+        margin = api(f"/me/agents/{aid}/margin-events", key)
+        time.sleep(PAUSE)
+        ev = margin.get("events") or margin.get("data") or []
+        if ev:
+            print(f"!! {ticker}: {len(ev)} margin events — inspect fills_snapshot.json")
         for f in (fills.get("fills") or fills.get("data") or []):
             rows.append({"ticker": ticker, **{k: f.get(k) for k in
                         ("symbol", "side", "qty", "price", "bid_at_fill", "ask_at_fill",

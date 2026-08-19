@@ -43,7 +43,11 @@ short) — measured at 1.4% over a 40-bar stretch on the deploy ensemble. NPKL n
 shorts, so this applies to NPKN only;
 (2) crypto "opens" are UTC-midnight bars but orders fill at 9:31 ET (~6.5 h later) —
 the gap analysis buckets crypto separately; (3) day-one orders filled mid-session, not
-at open (timestamped, excluded from open-fill stats).
+at open (timestamped, excluded from open-fill stats); (4) crypto positions — including
+shorts — ride unmonitored over weekends: the tape is NYSE-day aligned, so weekend rides
+*are* the trained semantics, and 1/18-of-equity sizing bounds the tail (a 50% weekend
+move on one symbol ≈ 2.8% of equity). The `gap` command polls `margin-events` so a
+weekend margin call would surface in Monday's log, not silently.
 
 ## Registered measurement targets (2026-08-19, before the first live fill)
 
