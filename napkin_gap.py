@@ -248,7 +248,10 @@ def gap():
         time.sleep(PAUSE)
         ev = margin.get("events") or margin.get("data") or []
         if ev:
-            print(f"!! {ticker}: {len(ev)} margin events — inspect fills_snapshot.json")
+            os.makedirs(OUT, exist_ok=True)
+            mf = os.path.join(OUT, f"margin_events_{ticker}.json")
+            json.dump(ev, open(mf, "w"), indent=1)
+            print(f"!! {ticker}: {len(ev)} margin events — saved to {mf}")
         for f in (fills.get("fills") or fills.get("data") or []):
             rows.append({"ticker": ticker, **{k: f.get(k) for k in
                         ("symbol", "side", "qty", "price", "bid_at_fill", "ask_at_fill",
