@@ -28,6 +28,23 @@ and the ensemble is disclosed). Nets are retrained fresh on all bulk data up to 
 date — walk-forward consistent: live *is* the test set. Ties in the vote hold the current
 position.
 
+**Provenance is recorded per arm** (`out/nets/fingerprint.json`), because the two agents are
+retrained independently on purpose: an agent that is mid-measurement must not be disturbed just
+because its sibling was improved. A single shared fingerprint would then misreport whichever arm
+was left alone. Current state:
+
+| agent | arm | bars trained on | alignment | trained |
+|---|---|---|---|---|
+| NPKN | `base` | 751 | `intersect` | 2026-08-19 |
+| NPKL | `long2` | **2,512** | `ragged` | 2026-08-20 |
+
+NPKL's retrain uses napkin-eyes' `align="ragged"` tape: the earlier `intersect` mode dropped every
+bar before the universe's latest listing (`X:SOLUSD`, 2021-06-17), discarding **48%** of the ten
+years on disk. NPKN is deliberately left frozen — its registered 10-day PnL-divergence measurement
+is running, and swapping its policy would reset that clock. Verified before the swap: the two
+alignments produce **bit-identical live votes** on the current bar, so the extra history changes
+training only, not the decision path.
+
 **The daily loop** (cron, 9:31 ET, trading days): refresh the bulk tape → compute
 yesterday-close features → greedy ensemble vote per symbol → diff against live positions
 → market orders (venue-mapped sides: buy/sell for longs, short/cover for shorts) → log

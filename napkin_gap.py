@@ -76,13 +76,33 @@ def net_path(arm, seed):
     return os.path.join(OUT, "nets", f"{arm}_{seed}.pt")
 
 
-def train():
-    """Retrain deploy nets on ALL bulk data up to today (live is the test set)."""
+def merge_fingerprint(old, trained, rec, all_arms=("base", "long2")):
+    """Per-arm provenance, retaining the arms this run did NOT retrain.
+
+    Pure so it can be asserted: getting this wrong means a live agent's record
+    claims data it never saw, which is worse than having no record. A legacy
+    file is a single flat record written when every arm was trained together,
+    so it applies to all of them."""
+    fp = dict(old)
+    if "data_end" in fp:                       # legacy flat record
+        fp = {a: dict(old) for a in all_arms}
+    for arm in trained:
+        fp[arm] = dict(rec)
+    return fp
+
+
+def train(align="ragged", arms=("base", "long2")):
+    """Retrain deploy nets on ALL bulk data up to today (live is the test set).
+
+    align="ragged" uses the full stock calendar (2016->), masking symbols before
+    they listed; the older "intersect" mode threw away every bar before the
+    latest listing (X:SOLUSD, 2021-06-17) and so trained on half the tape."""
     os.makedirs(os.path.join(OUT, "nets"), exist_ok=True)
-    market = ne.Market()
+    market = ne.Market(align=align)
     market.t_train_end = market.T  # deploy nets see everything; no holdout
     feat = torch.tensor(ne.build_features(market, ntr.OBS_ARM), device=ntr.DEV)
-    for arm in ("base", "long2"):
+    trained = set()
+    for arm in arms:
         for seed in range(SEEDS):
             p = net_path(arm, seed)
             if os.path.exists(p):
@@ -90,12 +110,23 @@ def train():
             t0 = time.time()
             net, acts = ntr.train(arm, seed, market, feat)
             torch.save(net.state_dict(), p)
+            trained.add(arm)
             print(f"trained {arm} seed {seed} ({time.time()-t0:.0f}s)", flush=True)
-    json.dump({"data_end": market.dates[-1], "bars": market.T + 1,
-               "torch": torch.__version__, "trained_utc":
-               datetime.utcnow().isoformat() + "Z"},
-              open(os.path.join(OUT, "nets", "fingerprint.json"), "w"))
-    print("fingerprint:", market.dates[-1])
+    # Provenance is PER ARM: arms can be retrained independently (a live agent
+    # mid-measurement must not be disturbed just because its sibling was
+    # improved), so one shared fingerprint would misreport whichever arm was
+    # left alone.
+    fp_path = os.path.join(OUT, "nets", "fingerprint.json")
+    old_fp = json.load(open(fp_path)) if os.path.exists(fp_path) else {}
+    rec = {"data_end": market.dates[-1], "bars": market.T + 1,
+           "align": align, "torch": torch.__version__,
+           "trained_utc": datetime.utcnow().isoformat() + "Z"}
+    fp = merge_fingerprint(old_fp, trained, rec, all_arms=("base", "long2"))
+    json.dump(fp, open(fp_path, "w"), indent=1)
+    for arm, rec in sorted(fp.items()):
+        print(f"fingerprint {arm}: {rec['bars']} bars "
+              f"({rec.get('align', 'intersect')}) to {rec['data_end']}"
+              f"  (trained {rec['trained_utc'][:19]}Z)")
 
 
 def load_ensemble(arm, aset):
@@ -312,6 +343,23 @@ def register_keel():
 # ------------------------------------------------------------------- selfcheck
 
 def selfcheck():
+    # 0. provenance merge. Retraining one agent must never restate the other's
+    # training data, and a legacy flat record must expand to every arm it
+    # actually described -- silent provenance drift is worse than no record.
+    legacy = {"data_end": "2026-08-18", "bars": 751, "trained_utc": "old"}
+    new = {"data_end": "2026-08-19", "bars": 2512, "align": "ragged",
+           "trained_utc": "new"}
+    m1 = merge_fingerprint(legacy, {"long2"}, new)
+    assert set(m1) == {"base", "long2"}, m1
+    assert m1["base"]["bars"] == 751 and m1["base"]["data_end"] == "2026-08-18"
+    assert m1["long2"] == new and m1["long2"] is not new
+    m2 = merge_fingerprint({}, {"base"}, new)
+    assert m2 == {"base": new}, m2
+    m3 = merge_fingerprint(m1, set(), new)          # trained nothing -> no change
+    assert m3 == m1
+    assert merge_fingerprint(m1, {"base", "long2"}, new) == {"base": new, "long2": new}
+    print("selfcheck 0/4: per-arm provenance merge (legacy expand, "
+          "untrained arms preserved, no aliasing)")
     # 1. order-side mapping: property test over signed positions
     import random
     rng = random.Random(0)
