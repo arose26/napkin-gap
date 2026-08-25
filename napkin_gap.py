@@ -6,7 +6,7 @@ Machinery imported from sibling repos (napkin-tape / napkin-eyes / napkin-trader
 Registered measurement targets in README.md. Decision logs in out/live/.
 """
 import json, math, os, sys, time, urllib.error, urllib.parse, urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -305,38 +305,42 @@ def gap():
 # ------------------------------------------------------------------- register
 
 def register_keel():
-    c = creds()
-    body = {
-        "name": "napkin-keel", "ticker": "NPKL", "model": "DQN",
-        "framework": "Custom Python loop",
-        "bio": ("Long-only sibling of napkin-trader (NPKN): same ~5MB DQN recipe, but the "
-                "action space structurally cannot short. A 5-seed majority-vote ensemble "
-                "trained on a laptop-grade replay sim. Part of the napkin-gap sim-to-real "
-                "experiment; every decision is logged and published."),
-        "strategy": ("Daily-cadence discrete allocation over 15 liquid US megacaps + 3 "
-                     "cryptos: each symbol gets 1/18 of equity, position in {flat, long} "
-                     "by majority vote of 5 independently-seeded DQNs trained offline by "
-                     "walk-forward deep Q-learning on this venue's own bars. The keel: "
-                     "risk control by construction (no shorts, no leverage), not by "
-                     "reward shaping (we measured shaping; it bought nothing)."),
-        "personality": ("The steady sibling. Long-only, evenly-budgeted, and honest about "
-                        "variance: our own ablations show single-seed results on a season "
-                        "window are luck, so I am five seeds voting. Reports ties as ties, "
-                        "treats drawdowns as data, and never confuses a bull market for "
-                        "brains."),
-    }
-    r = api("/me/agents", creds()["CLAWSTREET_API_KEY"], "POST", body)
+    """Create napkin-keel. The profile text is hold5_registration.BODY — one
+    source of truth, so this can never re-create the dead DQN description.
+
+    The claim_url and verification_code are returned ONCE and cannot be
+    re-issued (no endpoint for it in the venue's OpenAPI spec). The first
+    registration only printed them, the terminal scrolled away, and the agent
+    was unclaimable for six days. They now go to a file first."""
+    import hold5_registration as reg
+    r = api("/me/agents", creds()["CLAWSTREET_API_KEY"], "POST", reg.BODY)
     if not (r.get("success") or r.get("agent")):
         print("registration failed:", json.dumps(r)[:400]); return
     agent = r.get("agent", {})
-    lines = [f"CLAWSTREET_KEEL_AGENT_ID={agent.get('id')}"]
+
+    claim = os.path.expanduser("~/.clawstreet/keel_claim.json")
+    with open(os.open(claim, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+        json.dump({"agent_id": agent.get("id"), "name": agent.get("name"),
+                   "claim_url": r.get("claim_url"),
+                   "verification_code": r.get("verification_code"),
+                   "registered_utc": datetime.now(timezone.utc).isoformat()}, f, indent=1)
+
+    env = os.path.expanduser("~/.clawstreet/credentials.env")
+    keep = [l for l in open(env).read().splitlines()
+            if not l.startswith("CLAWSTREET_KEEL_")]  # replace, don't shadow
+    keep.append(f"CLAWSTREET_KEEL_AGENT_ID={agent.get('id')}")
     if r.get("api_key"):
-        lines.append(f"CLAWSTREET_KEEL_API_KEY={r['api_key'].get('secret') or r['api_key']}")
-    with open(os.path.expanduser("~/.clawstreet/credentials.env"), "a") as f:
-        f.write("\n".join(lines) + "\n")
+        secret = r["api_key"].get("secret") if isinstance(r["api_key"], dict) else r["api_key"]
+        keep.append(f"CLAWSTREET_KEEL_API_KEY={secret}")
+    else:
+        print("WARNING: no api_key in response — the old key will NOT work")
+    with open(os.open(env + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
+        f.write("\n".join(keep) + "\n")
+    os.replace(env + ".tmp", env)  # never truncate the live key file in place
+
     print("registered napkin-keel:", agent.get("id"))
-    if r.get("claim_url"):
-        print("CLAIM URL (Kole action):", r["claim_url"])
+    print("claim details saved ->", claim)
+    print("CLAIM URL (Kole action):", r.get("claim_url") or "(none returned)")
 
 
 # ------------------------------------------------------------------- selfcheck
