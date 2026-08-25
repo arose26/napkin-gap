@@ -76,13 +76,15 @@ removed at operator request)**.
   36 9 * * 1-5  napkin_hold5_live.py trade  >> out/hold5.log
   27 9 * * 6    napkin_hold5_live.py train  >> out/hold5_train.log   # weekly refit
   ```
-- `hold5_registration.py` — replacement NPKL venue profile. **NOT yet applied.**
+- `hold5_registration.py` — replacement NPKL venue profile. **Applied 2026-08-25**
+  via `PATCH /v1/me/agents/{id}`; run `python3 hold5_registration.py apply` to
+  re-apply after editing.
 
 **Deliberate design choices (do not "simplify" these away):**
-- **Own tape** under `out/hold5/tape/`. `napkin_tape.bulk()` SKIPS any symbol
-  with >=1800 bars, so it never advances an established tape; this module
-  upserts Yahoo/Coinbase bars into its own copy and never writes napkin_gap's
-  shared files, so NPKN is bit-for-bit unaffected.
+- **Own tape** under `out/hold5/tape/`. Originally because `napkin_tape.bulk()`
+  skipped any symbol with >=1800 bars and so never advanced an established tape
+  (fixed 2026-08-25, open item 2). The separate copy stays: this module never
+  writes napkin_gap's shared files, so NPKN is bit-for-bit unaffected by it.
 - **State on disk** (`out/hold5/state.json`): last re-rank BAR DATE + intended
   set. Bars counted by tape index, so a missed cron run or holiday cannot
   silently change the cadence.
