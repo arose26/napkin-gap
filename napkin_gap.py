@@ -26,7 +26,6 @@ ET = ZoneInfo("America/New_York")
 
 AGENTS = {  # ticker -> (repo-3 arm, action set, creds key prefix)
     "NPKN": ("base", "long3", "CLAWSTREET"),
-    "NPKL": ("long2", "long2", "CLAWSTREET_KEEL"),
 }
 
 
