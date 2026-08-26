@@ -325,8 +325,15 @@ def equity():
         if not key or not aid:
             continue
         path = os.path.join(OUT, "equity", f"{ticker}.jsonl")
-        if os.path.exists(path) and any(
-                json.loads(l)["date"] == stamp for l in open(path)):
+        def logged_dates(p):
+            # tolerate a torn/corrupt line: skipping it costs one dedupe check,
+            # crashing here would block ALL future logging
+            for l in open(p):
+                try:
+                    yield json.loads(l).get("date")
+                except ValueError:
+                    continue
+        if os.path.exists(path) and stamp in set(logged_dates(path)):
             print(f"{ticker}: {stamp} already logged")
             continue
         row = {"date": stamp}
