@@ -260,6 +260,13 @@ def trade(dry=False, refresh=True):
         log["orders"].append(rec)
 
     if not dry:
+        # a failed BUY must not be tracked, or a phantom position blocks
+        # re-entry until its barrier expires. (Failed exits and strays already
+        # self-heal: an unexited holding is untracked next run -> closed as a
+        # stray; a failed stray-close is simply retried.)
+        for o in log["orders"]:
+            if o["side"] == "buy" and not o.get("response", {}).get("success"):
+                new_state["positions"].pop(o["symbol"], None)
         os.makedirs(OUT, exist_ok=True)
         json.dump(new_state, open(STATE, "w"), indent=1)
     save()
