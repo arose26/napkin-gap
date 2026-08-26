@@ -25,7 +25,8 @@ PAUSE = 1.1
 ET = ZoneInfo("America/New_York")
 
 AGENTS = {  # ticker -> (repo-3 arm, action set, creds key prefix)
-    "NPKN": ("base", "long3", "CLAWSTREET"),
+    # NPKN moved to napkin_boll_live.py 2026-08-26 (operator instruction);
+    # NPKL moved to napkin_hold5_live.py 2026-08-24. The DQN trades nothing.
 }
 
 
