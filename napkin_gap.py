@@ -302,6 +302,50 @@ def gap():
                   f"max {slips[-1]:.2f} bps over {len(slips)} fills")
 
 
+# ------------------------------------------------------------------- equity
+
+def equity():
+    """Append one equity point per agent per day to out/equity/<TICKER>.jsonl.
+
+    Exists because the venue stores almost no history: after 7 live days its
+    equity-curve endpoint held TWO points for NPKN, so no Sharpe, drawdown or
+    t-statistic was computable when we tried to evaluate the agent (2026-08-26).
+    A daily local point makes the agent judgeable in a few months.
+
+    Idempotent per (agent, date): re-runs on the same day are skipped, so a
+    manual run after the cron cannot double-log. Failures are logged as rows
+    with an "error" field rather than silently skipped — a gap that looks like
+    a quiet day is worse than a visible error."""
+    c = creds()
+    os.makedirs(os.path.join(OUT, "equity"), exist_ok=True)
+    stamp = datetime.now(ET).strftime("%Y-%m-%d")
+    books = [("NPKN", "CLAWSTREET"), ("NPKL", "CLAWSTREET_KEEL")]
+    for ticker, pfx in books:
+        key, aid = c.get(f"{pfx}_API_KEY"), c.get(f"{pfx}_AGENT_ID")
+        if not key or not aid:
+            continue
+        path = os.path.join(OUT, "equity", f"{ticker}.jsonl")
+        if os.path.exists(path) and any(
+                json.loads(l)["date"] == stamp for l in open(path)):
+            print(f"{ticker}: {stamp} already logged")
+            continue
+        row = {"date": stamp}
+        try:
+            pf = api(f"/me/agents/{aid}/portfolio", key)
+            row.update(equity=pf.get("equity"), cash=pf.get("cash"),
+                       ret_pct=pf.get("total_return_pct"))
+            pos = api(f"/me/agents/{aid}/positions", key)
+            gross = 0.0
+            for p_ in (pos.get("positions") or pos.get("data") or []):
+                gross += abs(float(p_.get("qty", p_.get("quantity", 0)))) *                     float(p_.get("current_price") or 0)
+            row["gross_exposure"] = round(gross / row["equity"], 4)                 if row.get("equity") else None
+        except Exception as e:  # noqa: BLE001 - log the failure, never skip the row
+            row["error"] = str(e)[:200]
+        with open(path, "a") as f:
+            f.write(json.dumps(row) + "\n")
+        print(f"{ticker}: {row}")
+
+
 # ------------------------------------------------------------------- register
 
 def register_keel():
@@ -464,4 +508,4 @@ if __name__ == "__main__":
         print(json.dumps(decide(), indent=1))
     else:
         {"train": train, "selfcheck": selfcheck, "gap": gap,
-         "register-keel": register_keel}[cmd]()
+         "equity": equity, "register-keel": register_keel}[cmd]()
